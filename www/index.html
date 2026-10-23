@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<title>Тихие воды</title>
+<style>
+:root{--ink:#0b171b;--deep:#10262b;--ice:#e3ecea;--stone:#7f9699;--lamp:#e2b25f;--drown:#2f6b78}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;height:100%;background:var(--ink);color:var(--ice);font-family:Georgia,"Times New Roman",serif;overflow:hidden}
+#app{position:fixed;inset:0;display:flex;flex-direction:column;padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom)}
+#top{display:flex;justify-content:space-between;align-items:center;padding:8px 14px;color:var(--stone);font-size:14px;font-style:italic}
+#top button{min-height:44px;padding:0 14px}
+#stage{flex:1;position:relative;overflow:hidden;transition:background 1s}
+.bg-night{background:radial-gradient(circle at 78% 22%,rgba(226,178,95,.35),transparent 28%),linear-gradient(#0b171b,#14292e)}
+.bg-snow{background:radial-gradient(circle at 20% 15%,rgba(227,236,234,.28),transparent 35%),linear-gradient(#1a2e35,#0e1c21)}
+.bg-cellar{background:radial-gradient(circle at 50% 100%,rgba(47,107,120,.6),transparent 55%),#071114}
+#water{position:absolute;left:0;right:0;bottom:0;height:var(--lvl,4%);background:linear-gradient(rgba(47,107,120,.5),rgba(47,107,120,.85));border-top:1px solid rgba(227,236,234,.35);transition:height 1.6s ease}
+#box{background:rgba(6,14,17,.94);padding:18px 18px 14px;min-height:42%;max-height:62%;overflow:auto}
+#who{color:var(--lamp);font-style:italic;font-size:16px;min-height:20px;margin-bottom:4px}
+#txt{font-size:18px;line-height:1.6;margin:0 0 12px;max-width:60ch}
+#txt.tell{color:var(--stone);font-style:italic}
+.ch{display:block;width:100%;min-height:48px;margin:8px 0;padding:10px 14px;text-align:left;font:inherit;font-size:17px;color:var(--ice);background:transparent;border:1px solid var(--stone);border-radius:3px}
+.ch:active{background:rgba(227,236,234,.1)}
+.ch[disabled]{opacity:.45}
+.ch small{display:block;color:var(--stone);font-size:13px;margin-top:2px}
+#more{text-align:right;color:var(--lamp);font-size:20px}
+button.plain{background:none;border:0;color:inherit;font:inherit}
+#ov{position:fixed;inset:0;background:rgba(7,17,20,.97);padding:calc(env(safe-area-inset-top) + 16px) 18px 18px;overflow:auto;display:none}
+#ov h2{font-weight:normal;font-size:22px;margin:0 0 12px}
+#ov p{margin:10px 0;line-height:1.5}
+#ov b{color:var(--lamp);font-weight:normal}
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="top"><span id="loc">Тихие воды</span><button class="plain" id="menu">Улики</button></div>
+  <div id="stage" class="bg-night"><div id="water"></div></div>
+  <div id="box"><div id="who"></div><p id="txt"></p><div id="opts"></div><div id="more"></div></div>
+</div>
+<div id="ov"></div>
+<script>
+// ---------- Улики ----------
+const CL={
+ stone:["Камень в ладони","Гладкий мокрый камень. Такой же у всех семерых."],
+ ceil:["Мокрый след на потолке","Будто вода стекла вверх."],
+ env:["Ответ на письмо","«Детей в корпусе было двое». Письмо отправила В. Ольховская."],
+ volk:["Подпись Волкова","Лейтенант Волков подписал старое дело о санатории. Лис это скрыл."],
+ water:["Вода слушает","Слова сторожа Матвея. Возможно, не байка."],
+ weather:["Ложь не о той ночи","Элеонора солгала про погоду, и ничего не случилось."],
+ evasive:["Мэр не лжёт","Отвечает, но ни разу не сказал прямо."],
+ letters:["Тринадцать писем","Вера написала тринадцати подписантам. Семеро ответили «двое» и умерли."],
+ eldead:["Смерть Элеоноры","Солгала о смерти мужа. Миша видел."],
+ elsilent:["Элеонора молчит","Про подвал не говорит. Молчание безопасно, но и не помогает."]
+};
+// ---------- Сцены: [текст, кому, следующая | варианты] ----------
+// выбор: [текст, сцена, {need, hideIf, hint, set, clue}]
+const S={
+p1:{bg:"night",loc:"Квартира №7",t:"Седьмая квартира за эту ночь. Дверь заперта изнутри, цепочка на месте. Илья считает ступени на лестнице: сорок одна. Он всегда считает.",n:"p2"},
+p2:{who:"Лис",t:"Если я замолчал, значит, мне страшно. Так что слушай: я болтаю уже полчаса.",n:"p3"},
+p3:{t:"Свет Илья включил сразу, как вошёл. Что осмотреть?",c:[
+ ["Ладонь погибшего","s1",{hideIf:"stone"}],
+ ["Потолок","s2",{hideIf:"ceil"}],
+ ["Письменный стол","s3",{hideIf:"env"}],
+ ["Закончить осмотр","p4",{need:["stone","ceil","env"],hint:"Осмотрено не всё"}]]},
+s1:{clue:"stone",t:"В ладони гладкий речной камень, мокрый. Такой же, как у остальных шестерых.",n:"p3"},
+s2:{clue:"ceil",t:"На потолке тёмный водяной след. Будто вода стекла вверх.",n:"p3"},
+s3:{clue:"env",t:"Под бумагами вскрытый конверт. Внутри ответ на чьё-то письмо: «Детей в корпусе было двое». На обороте адрес отправителя: В. Ольховская, Москва. У остальных шестерых такие же конверты.",n:"p3"},
+p4:{who:"Лис",t:"У всех семерых в прошлом одна строчка: санаторий «Тихие воды». Я поднял архив, там ничего интересного.",n:"p4b"},
+p4b:{who:"",t:"[Руки Лиса: чисто.]",tell:1,c:[
+ ["Взять папку и пролистать","s4",{}],
+ ["Поверить на слово","p6",{set:{tl:1}}]]},
+s4:{clue:"volk",t:"Внизу листа знакомый почерк: лейтенант Волков. Лис отводит глаза. «Совпадение, наверное».",n:"p6"},
+p6:{who:"Волков (по телефону)",t:"Закрывай дело, Корин. Это приказ. Семеро самоубийц, и точка.",c:[
+ ["Подчиниться","endc",{}],
+ ["Я еду в «Тихие воды»","c1",{}]]},
+endc:{end:1,title:"Дело закрыто",t:"Через год в городе всё как прежде. Или изменилось, но никто не заметил."},
+
+c1:{bg:"snow",loc:"Санаторий",t:"Тёмный главный корпус и чёрный силуэт сгоревшего флигеля. У ворот старик кормит воронов.",n:"c1b"},
+c1b:{who:"Матвей",t:"Закрыто. Хотя закрыто, это для тех, кто собирается уйти. Идите. Я один раз умер в этом доме, мне не страшно.",n:"hub"},
+hub:{t:"Метель крепчает. С кем поговорить?",c:[
+ ["Сторож Матвей","mat",{hideIf:"f_mat"}],
+ ["Хозяйка корпуса","el",{hideIf:"f_el"}],
+ ["Мэр, приехавший «с проверкой»","sar",{hideIf:"f_sar"}],
+ ["Журналистка в гостиной","ver",{hideIf:"f_ver"}],
+ ["Спуститься в подвал","cel",{need:["f_mat","f_el","f_sar","f_ver"],hint:"Сначала поговорить со всеми"}]]},
+mat:{clue:["f_mat","water"],who:"Матвей",t:"Вода внизу не тёплая. Она слушает. А вороны помнят каждого, кто врал. Одно из этого байка. Угадай, что.",n:"hub"},
+el:{clue:"f_el",bg:"night",who:"Элеонора Вейс",t:"Какой чудесный вечер. Для декабря такая тёплая погода, правда? За роялем её сын Миша смотрит в одну точку и молчит.",n:"el2"},
+el2:{t:"[Лис шепчет: «Про погоду она соврала. На улице метель».] Вода не отозвалась.",tell:1,clue:"weather",c:[
+ ["Мягко: «Что делал ваш муж в подвале?»","elt",{}],
+ ["Надавить: «Ваш муж умер от сердца?»","eld",{}]]},
+elt:{clue:"elsilent",who:"Элеонора Вейс",t:"Я не буду отвечать. Простите. Сыграть вам что-нибудь?",n:"hub"},
+eld:{set:{blood:1},clue:"eldead",t:"«Да. От сердца». Ноты обрываются. На потолке расползается мокрый след. Лис выдыхает: «Она соврала. Про ту ночь». Мальчик у рояля не издаёт ни звука.",n:"hub"},
+sar:{clue:"f_sar",bg:"night",who:"Давид Сарыг",t:"Вы думаете, мне легко? Я приехал с проверкой, дом на моей ответственности. Конфету хотите?",c:[
+ ["Спросить, сколько детей было в 1982-м","sar2",{}],
+ ["Взять конфету и уйти","hub",{}]]},
+sar2:{clue:"evasive",who:"Давид Сарыг",t:"Я помню каждого ребёнка нашего города по имени. Назвать? [Руки Лиса: чисто. Но прямого ответа так и нет.]",n:"hub"},
+ver:{clue:"f_ver",who:"Вера",t:"Я? Просто отдыхаю.",c:[
+ ["Спросить, зачем она приехала","v1",{}],
+ ["Положить на стол конверт","v2",{need:"env",hint:"Нужна улика: ответ на письмо"}]]},
+v1:{who:"Вера",t:"Нервы лечу. [Лис: врёт. Но не о той ночи, воде всё равно.]",c:[
+ ["Положить на стол конверт","v2",{need:"env",hint:"Нужна улика: ответ на письмо"}],
+ ["Отпустить её","hub",{set:{tv:1}}]]},
+v2:{clue:"letters",set:{truth:1,tv:1},who:"Вера",t:"Я написала тринадцати. Семеро ответили. Я не знала, что так будет. Клянусь.",n:"hub"},
+cel:{bg:"cellar",loc:"Подвал",t:"Метель рвёт провода. Телефон мёртв. За ржавой дверью шумит вода, тихо, по-детски.",n:"cel2"},
+cel2:{bg:"cellar",t:"Лис держит трубку без гудка и читает дочери сказку в пустоту. Илья не мешает.",n:"fin"},
+fin:{end:1,title:"Конец демоверсии",t:"Глава 2 «Гости»: впереди часовня, плёнка 1983 года и первая смерть, которую можно предотвратить."}
+};
+// ---------- Состояние ----------
+const $=id=>document.getElementById(id);
+const KEY="tv_save_v1";
+let st;
+function fresh(){return{id:"p1",bg:"night",v:{truth:0,blood:0,tl:0,tv:0},c:[]}}
+try{st=JSON.parse(localStorage.getItem(KEY))||fresh()}catch(e){st=fresh()}
+const save=()=>{try{localStorage.setItem(KEY,JSON.stringify(st))}catch(e){}};
+const has=k=>[].concat(k).every(x=>st.c.includes(x));
+function go(id){
+  const s=S[id];st.id=id;
+  if(s.bg)st.bg=s.bg;
+  [].concat(s.clue||[]).forEach(k=>{if(!st.c.includes(k))st.c.push(k)});
+  if(s.set)for(const k in s.set)st.v[k]=(st.v[k]||0)+s.set[k];
+  save();render();
+}
+function render(){
+  const s=S[st.id];
+  $("stage").className="bg-"+st.bg;
+  $("water").style.setProperty("--lvl",(4+st.v.blood*10)+"%");
+  if(s.loc)$("loc").textContent=s.loc;
+  $("who").textContent=s.who||"";
+  $("txt").textContent=s.t;
+  $("txt").className=s.tell?"tell":"";
+  const o=$("opts");o.innerHTML="";$("more").textContent="";
+  $("box").scrollTop=0;
+  if(s.c){
+    s.c.forEach(([t,g,op])=>{
+      if(op.hideIf&&has(op.hideIf))return;
+      const ok=!op.need||has(op.need);
+      const b=document.createElement("button");
+      b.className="ch";b.textContent=t;b.disabled=!ok;
+      if(!ok&&op.hint){const m=document.createElement("small");m.textContent=op.hint;b.appendChild(m)}
+      b.onclick=()=>{if(op.set)for(const k in op.set)st.v[k]=(st.v[k]||0)+op.set[k];go(g)};
+      o.appendChild(b);
+    });
+  }else if(s.end){
+    $("who").textContent=s.title;
+    const sum=document.createElement("p");
+    sum.style.color="var(--stone)";
+    sum.textContent="Правда: "+st.v.truth+"  ·  Смерти на вашей совести: "+st.v.blood+"  ·  Улик: "+st.c.filter(k=>CL[k]).length;
+    o.appendChild(sum);
+    const b=document.createElement("button");b.className="ch";b.textContent="Начать заново";
+    b.onclick=()=>{st=fresh();go("p1")};o.appendChild(b);
+  }else if(s.n){$("more").textContent="▾"}
+}
+$("box").addEventListener("click",e=>{
+  const s=S[st.id];
+  if(s.n&&!s.c&&!s.end&&e.target.tagName!=="BUTTON")go(s.n);
+});
+$("menu").onclick=()=>{
+  const ov=$("ov");
+  const list=st.c.filter(k=>CL[k]).map(k=>"<p><b>"+CL[k][0]+"</b><br>"+CL[k][1]+"</p>").join("");
+  ov.innerHTML="<h2>Доска улик</h2>"+(list||"<p>Пока пусто.</p>")+
+   '<button class="ch" id="x">Закрыть</button><button class="ch" id="r">Начать заново</button>';
+  ov.style.display="block";
+  $("x").onclick=()=>ov.style.display="none";
+  $("r").onclick=()=>{if(confirm("Стереть прогресс?")){st=fresh();ov.style.display="none";go("p1")}};
+};
+render();
+</script>
+</body>
+</html>
